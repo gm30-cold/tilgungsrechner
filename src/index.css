@@ -49,6 +49,11 @@
     color: var(--color-ink-50);
   }
 
+  /* Scroll targets: Abstand zum oberen Rand bei scrollIntoView */
+  [id] {
+    scroll-margin-top: 8rem;
+  }
+
   /* Hide number input spinners */
   input[type=number]::-webkit-inner-spin-button,
   input[type=number]::-webkit-outer-spin-button {

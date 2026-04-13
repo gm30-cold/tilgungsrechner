@@ -386,7 +386,7 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
       </Card>
 
       {/* Eingabe-Parameter */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+      <div id="miet-szenario" className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <MieteEingaben mb={mb} setMietBenchmark={ctrl.setMietBenchmark} />
         <AnnahmenEingaben mb={mb} setMietBenchmark={ctrl.setMietBenchmark} />
       </div>

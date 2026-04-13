@@ -5,6 +5,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Scale,
+  BookOpen,
 } from "lucide-react";
 import { useFinanzierung } from "./hooks/useFinanzierung";
 import { useMatchHeight } from "./hooks/useMatchHeight";
@@ -19,11 +20,13 @@ import { Foerderungen } from "./components/Foerderungen";
 import { EinmaligeEinnahmen, EinmaligeAusgaben } from "./components/EinmaligePosten";
 import { LaufendeKosten } from "./components/LaufendeKosten";
 import { MietBenchmarkPanel } from "./components/MietBenchmarkPanel";
+import { AnleitungPanel } from "./components/AnleitungPanel";
 import { RestschuldVerlauf } from "./components/charts/RestschuldVerlauf";
 import { ZinsTilgungAufteilung } from "./components/charts/ZinsTilgungAufteilung";
 import { Sensitivitaet } from "./components/charts/Sensitivitaet";
 
 type TabKey =
+  | "anleitung"
   | "dashboard"
   | "finanzierung"
   | "einnahmen"
@@ -31,6 +34,7 @@ type TabKey =
   | "miet-benchmark";
 
 const TAB_DEFS: TabDef<TabKey>[] = [
+  { key: "anleitung", label: "Anleitung", icon: <BookOpen size={14} /> },
   { key: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={14} /> },
   { key: "finanzierung", label: "Finanzierung", icon: <Landmark size={14} /> },
   { key: "einnahmen", label: "Einnahmen", icon: <ArrowDownLeft size={14} /> },
@@ -52,6 +56,20 @@ export default function App() {
       />
 
       <main className="mx-auto max-w-[1600px] px-4 sm:px-6 py-6 sm:py-8">
+        {activeTab === "anleitung" && (
+          <AnleitungPanel
+            onNavigate={(tab, scrollId) => {
+              setActiveTab(tab as TabKey);
+              requestAnimationFrame(() => {
+                if (scrollId) {
+                  document.getElementById(scrollId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                } else {
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }
+              });
+            }}
+          />
+        )}
         {activeTab === "dashboard" && <DashboardTab ctrl={ctrl} />}
         {activeTab === "finanzierung" && <FinanzierungTab ctrl={ctrl} />}
         {activeTab === "einnahmen" && <EinnahmenTab ctrl={ctrl} />}
@@ -97,6 +115,7 @@ function DashboardTab({ ctrl }: { ctrl: ReturnType<typeof useFinanzierung> }) {
           <Sensitivitaet ctrl={ctrl} />
         </div>
         <div
+          id="sondertilgungen"
           className="xl:col-span-1"
           style={sensiHeight ? { height: sensiHeight } : undefined}
         >
@@ -135,11 +154,13 @@ function FinanzierungTab({ ctrl }: { ctrl: ReturnType<typeof useFinanzierung> })
           darlehen={ctrl.kosten.darlehenssumme}
           setKredit={ctrl.setKredit}
         />
-        <AnschlussfinanzierungBlock
-          anschluss={ctrl.finanzierung.anschlussfinanzierung}
-          kredit={ctrl.finanzierung.kredit}
-          setAnschluss={ctrl.setAnschluss}
-        />
+        <div id="anschluss">
+          <AnschlussfinanzierungBlock
+            anschluss={ctrl.finanzierung.anschlussfinanzierung}
+            kredit={ctrl.finanzierung.kredit}
+            setAnschluss={ctrl.setAnschluss}
+          />
+        </div>
       </div>
     </div>
   );
@@ -165,7 +186,7 @@ function EinnahmenTab({ ctrl }: { ctrl: ReturnType<typeof useFinanzierung> }) {
 function AusgabenTab({ ctrl }: { ctrl: ReturnType<typeof useFinanzierung> }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-      <LaufendeKosten ctrl={ctrl} />
+      <div id="laufende-kosten"><LaufendeKosten ctrl={ctrl} /></div>
       <EinmaligeAusgaben ctrl={ctrl} />
     </div>
   );
