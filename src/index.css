@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+
+  /* Fintech dark palette – deep neutral base with a cool accent */
+  --color-ink-950: #07080a;
+  --color-ink-900: #0b0d10;
+  --color-ink-850: #0f1216;
+  --color-ink-800: #13161b;
+  --color-ink-700: #1b1f26;
+  --color-ink-600: #272c35;
+  --color-ink-500: #3a404b;
+  --color-ink-400: #5b6370;
+  --color-ink-300: #8a93a0;
+  --color-ink-200: #b7bdc7;
+  --color-ink-100: #e4e7ec;
+  --color-ink-50:  #f4f5f7;
+
+  --color-accent: #5eead4;         /* teal - positive / highlight */
+  --color-accent-soft: #14b8a6;
+  --color-warn: #f43f5e;           /* rose - Zinslast */
+  --color-amber: #f59e0b;
+}
+
+@layer base {
+  html {
+    background: var(--color-ink-950);
+  }
+
+  body, #root {
+    min-height: 100vh;
+    background: var(--color-ink-950);
+    color: var(--color-ink-100);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01", "ss03";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  h1, h2, h3, h4 {
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--color-ink-50);
+  }
+
+  /* Hide number input spinners */
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type=number] {
+    -moz-appearance: textfield;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-ink-900);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-ink-600);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-500);
+  }
+}
