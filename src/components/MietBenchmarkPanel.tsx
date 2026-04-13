@@ -1,6 +1,6 @@
-// Tab: Miet-Benchmark. Vergleicht über den gesamten Kreditzeitraum das
-// Nettovermögen im Kauf-Case mit dem Miet-plus-Anlage-Case, für alle
-// drei Sondertilgungs-Szenarien gleichzeitig.
+// Tab: Miet-Benchmark. Vergleicht über den eingestellten Zeithorizont das
+// Nettovermögen im Kauf-Case mit dem Miet-plus-Anlage-Case.
+// Ein Szenario gleichzeitig sichtbar, umschaltbar per Segmented Control.
 
 import { useState } from "react";
 import { Database, Eye, EyeOff, Home, Landmark, Scale, TrendingUp } from "lucide-react";
@@ -26,26 +26,15 @@ interface Props {
   ctrl: FinanzierungController;
 }
 
-const SZENARIO_FARBEN = ["#5b6370", "#5eead4", "#f59e0b", "#f43f5e"];
-
 export function MietBenchmarkPanel({ ctrl }: Props) {
   const { mietBenchmark, finanzierung } = ctrl;
   const mb = finanzierung.mietBenchmark;
 
-  // Welche Szenarien sind aktuell im Chart sichtbar? Startwert: alle an.
-  const [visibleSzenarien, setVisibleSzenarien] = useState<boolean[]>(
-    () => mietBenchmark.szenarien.map(() => true),
-  );
-  // Sicherheitsnetz: falls sich die Anzahl der Szenarien ändert, State
-  // entsprechend ausrichten.
-  if (visibleSzenarien.length !== mietBenchmark.szenarien.length) {
-    setVisibleSzenarien(mietBenchmark.szenarien.map(() => true));
-  }
-  const toggleSzenario = (idx: number) => {
-    setVisibleSzenarien((prev) => prev.map((v, i) => (i === idx ? !v : v)));
-  };
+  // Aktives Szenario: nur eines gleichzeitig sichtbar, mit zugehörigem Vola-Band.
+  const [aktiverSzenarioIdx, setAktiverSzenarioIdx] = useState(0);
+  // Sicherheitsnetz: Index im gültigen Bereich halten.
+  const clampedIdx = Math.min(aktiverSzenarioIdx, mietBenchmark.szenarien.length - 1);
 
-  // Band nur anzeigen, wenn das mittlere Szenario aktiv ist.
   const [bandVisible, setBandVisible] = useState(true);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
 
@@ -61,34 +50,24 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
 
   const importedCount = Object.keys(mb.historischeMonatsReturns ?? {}).length;
 
-  // Gemeinsame Zeitachse: längster Szenario-Horizont ist maßgebend.
-  const maxLen = Math.max(
-    ...mietBenchmark.szenarien.map((s) => s.monate.length),
-    0,
-  );
-  // Für jedes Szenario werden ZWEI Kurven in den Datensatz geschrieben:
-  // `kauf_${idx}` und `miete_${idx}`. Zusätzlich für das mittlere Szenario
-  // das ±1σ-Band als Range-Area (`miete_band: [lower, upper]`).
-  const mittelIdx = Math.floor(mietBenchmark.szenarien.length / 2);
+  // Chart-Daten: nur das aktive Szenario + sein Vola-Band.
+  const aktivSzenario = mietBenchmark.szenarien[clampedIdx];
+  const maxLen = aktivSzenario?.monate.length ?? 0;
   type ChartRow = {
     monatIndex: number;
+    kauf: number;
+    miete: number;
     miete_band?: [number, number];
-    [key: string]: number | [number, number] | undefined;
   };
   const chartData: ChartRow[] = [];
   for (let i = 0; i < maxLen; i++) {
-    const row: ChartRow = { monatIndex: i };
-    mietBenchmark.szenarien.forEach((s, idx) => {
-      const monat = s.monate[i];
-      if (monat) {
-        row[`kauf_${idx}`] = monat.wealthKauf;
-        row[`miete_${idx}`] = monat.wealthMieteNetto;
-      }
-    });
-    const midMonat = mietBenchmark.szenarien[mittelIdx]?.monate[i];
-    if (midMonat) {
-      row.miete_band = [midMonat.wealthMieteNettoLower, midMonat.wealthMieteNettoUpper];
-    }
+    const monat = aktivSzenario.monate[i];
+    const row: ChartRow = {
+      monatIndex: i,
+      kauf: monat.wealthKauf,
+      miete: monat.wealthMieteNetto,
+    };
+    row.miete_band = [monat.wealthMieteNettoLower, monat.wealthMieteNettoUpper];
     chartData.push(row);
   }
   const tickInterval = Math.max(1, Math.floor(chartData.length / 8));
@@ -102,11 +81,9 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
       : -1;
   const heuteSichtbar = heuteIdx >= 0 && heuteIdx < chartData.length;
 
-  // Mittleres Szenario als "typische" Referenz für die KPIs.
-  const middleSzenario =
-    mietBenchmark.szenarien[Math.floor(mietBenchmark.szenarien.length / 2)] ??
-    mietBenchmark.szenarien[0];
-  const endMonat = middleSzenario?.monate[middleSzenario.monate.length - 1];
+  // KPIs zeigen das aktive Szenario.
+  const aktivesKPI = aktivSzenario ?? mietBenchmark.szenarien[0];
+  const endMonat = aktivesKPI?.monate[aktivesKPI.monate.length - 1];
 
   return (
     <div className="flex flex-col gap-6">
@@ -115,14 +92,14 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
         <KPI
           icon={<Home size={16} />}
           label="Vermögen bei Kauf"
-          value={formatEUR(middleSzenario?.endWealthKauf ?? 0)}
+          value={formatEUR(aktivesKPI?.endWealthKauf ?? 0)}
           sublabel={`am ${formatMonatJahr(endMonat?.datum ?? null)}`}
         />
         <KPI
           icon={<Landmark size={16} />}
           label="Vermögen bei Miete (netto)"
-          value={formatEUR(middleSzenario?.endWealthMieteNetto ?? 0)}
-          sublabel={`brutto ${formatEUR(middleSzenario?.endWealthMieteBrutto ?? 0)}`}
+          value={formatEUR(aktivesKPI?.endWealthMieteNetto ?? 0)}
+          sublabel={`brutto ${formatEUR(aktivesKPI?.endWealthMieteBrutto ?? 0)}`}
           variant="good"
         />
         <KPI
@@ -134,21 +111,17 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
         <KPI
           icon={<Scale size={16} />}
           label="KapSt auf Kursgewinn"
-          value={formatEUR(middleSzenario?.kapStBetrag ?? 0)}
-          sublabel={`Gewinn ${formatEUR(middleSzenario?.kursgewinn ?? 0)}`}
+          value={formatEUR(aktivesKPI?.kapStBetrag ?? 0)}
+          sublabel={`Gewinn ${formatEUR(aktivesKPI?.kursgewinn ?? 0)}`}
           variant="warn"
         />
         <KPI
           icon={<Scale size={16} />}
-          label={
-            middleSzenario?.breakEvenMonat != null
-              ? "Break-Even (mittleres Szenario)"
-              : "Break-Even"
-          }
+          label="Break-Even"
           value={
-            middleSzenario?.breakEvenMonat != null
+            aktivesKPI?.breakEvenMonat != null
               ? formatMonatJahr(
-                  middleSzenario.monate[middleSzenario.breakEvenMonat]?.datum ?? null,
+                  aktivesKPI.monate[aktivesKPI.breakEvenMonat]?.datum ?? null,
                 )
               : "Kauf niemals vor Miete"
           }
@@ -156,37 +129,33 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
         />
       </div>
 
-      {/* Absolute Vermögenskurven, je Szenario Kauf (solid) + Miete (gestrichelt) */}
+      {/* Vermögenskurven: ein Szenario mit Kauf (solid) + Miete (gestrichelt) + Vola-Band */}
       <Card
         title="Vermögen über die Zeit"
-        subtitle="Je Szenario: Kauf solid, Miete gestrichelt. Höher ist besser."
+        subtitle="Kauf solid, Miete gestrichelt. Höher ist besser."
         icon={<Scale size={16} />}
         actions={
-          <div className="flex flex-wrap items-center gap-1.5">
-            {mietBenchmark.szenarien.map((s, idx) => {
-              const active = visibleSzenarien[idx];
-              const color = SZENARIO_FARBEN[idx % SZENARIO_FARBEN.length];
-              return (
+          <div className="flex items-center gap-3">
+            {/* Segmented control: Szenario-Auswahl */}
+            <div className="inline-flex rounded-lg border border-[var(--color-ink-700)] bg-[var(--color-ink-900)] p-0.5">
+              {mietBenchmark.szenarien.map((s, idx) => (
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => toggleSzenario(idx)}
+                  onClick={() => setAktiverSzenarioIdx(idx)}
                   className={
-                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium transition-colors " +
-                    (active
-                      ? "border-[var(--color-ink-600)] bg-[var(--color-ink-800)] text-[var(--color-ink-100)]"
-                      : "border-[var(--color-ink-800)] bg-transparent text-[var(--color-ink-500)]")
+                    "rounded-md px-2.5 py-1 text-[10px] font-medium transition-colors " +
+                    (clampedIdx === idx
+                      ? "bg-[var(--color-ink-700)] text-[var(--color-ink-50)]"
+                      : "text-[var(--color-ink-400)] hover:text-[var(--color-ink-200)]")
                   }
-                  title={`${formatEUR(s.jaehrlicheSondertilgung)}/Jahr`}
+                  title={`${formatEUR(s.jaehrlicheSondertilgung)}/Jahr Sondertilgung`}
                 >
-                  <span
-                    className="inline-block h-2 w-2 rounded-full"
-                    style={{ backgroundColor: active ? color : "transparent", border: `1px solid ${color}` }}
-                  />
-                  Szenario {String.fromCharCode(65 + idx)}
+                  {String.fromCharCode(65 + idx)}
                 </button>
-              );
-            })}
+              ))}
+            </div>
+            {/* Vola-Band Toggle */}
             <button
               type="button"
               onClick={() => setBandVisible((v) => !v)}
@@ -196,10 +165,10 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
                   ? "border-[var(--color-ink-600)] bg-[var(--color-ink-800)] text-[var(--color-ink-100)]"
                   : "border-[var(--color-ink-800)] bg-transparent text-[var(--color-ink-500)]")
               }
-              title="±1σ-Band um mittleres Szenario"
+              title="±1σ Volatilitäts-Band"
             >
               {bandVisible ? <Eye size={11} /> : <EyeOff size={11} />}
-              Vola-Band
+              ±1σ
             </button>
           </div>
         }
@@ -221,8 +190,8 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
                 strokeDasharray="3 3"
                 vertical={false}
               />
-              {/* Volatilitäts-Band um das mittlere Szenario, ganz hinten gerendert */}
-              {bandVisible && visibleSzenarien[mittelIdx] && (
+              {/* Volatilitäts-Band um das aktive Szenario */}
+              {bandVisible && (
                 <Area
                   type="monotone"
                   dataKey="miete_band"
@@ -277,18 +246,11 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
                   if (key === "miete_band" && Array.isArray(value)) {
                     return [
                       `${formatEUR(value[0])} – ${formatEUR(value[1])}`,
-                      "Miete ±1σ (B)",
+                      "Miete ±1σ",
                     ];
                   }
                   if (typeof value !== "number") return ["–", key];
-                  const [typ, idxStr] = key.split("_");
-                  const idx = Number(idxStr ?? 0);
-                  const betrag =
-                    mietBenchmark.szenarien[idx]?.jaehrlicheSondertilgung ?? 0;
-                  const kennung = String.fromCharCode(65 + idx);
-                  const label = `${typ === "kauf" ? "Kauf" : "Miete"} ${kennung} (${formatEUR(
-                    betrag,
-                  )}/J)`;
+                  const label = key === "kauf" ? "Kauf" : "Miete (netto)";
                   return [formatEUR(value), label];
                 }}
               />
@@ -307,45 +269,37 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
                   }}
                 />
               )}
-              {mietBenchmark.szenarien.flatMap((_, idx) => {
-                if (!visibleSzenarien[idx]) return [];
-                const color = SZENARIO_FARBEN[idx % SZENARIO_FARBEN.length];
-                return [
-                  <Line
-                    key={`kauf_${idx}`}
-                    type="monotone"
-                    dataKey={`kauf_${idx}`}
-                    stroke={color}
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={false}
-                    connectNulls
-                  />,
-                  <Line
-                    key={`miete_${idx}`}
-                    type="monotone"
-                    dataKey={`miete_${idx}`}
-                    stroke={color}
-                    strokeWidth={1.5}
-                    strokeDasharray="5 4"
-                    dot={false}
-                    isAnimationActive={false}
-                    connectNulls
-                  />,
-                ];
-              })}
+              <Line
+                type="monotone"
+                dataKey="kauf"
+                stroke="#5eead4"
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+                connectNulls
+              />
+              <Line
+                type="monotone"
+                dataKey="miete"
+                stroke="#f59e0b"
+                strokeWidth={1.5}
+                strokeDasharray="5 4"
+                dot={false}
+                isAnimationActive={false}
+                connectNulls
+              />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Linien-Legende (Szenario-Filter sind oben im Card-Header) */}
+        {/* Linien-Legende */}
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] text-[var(--color-ink-400)]">
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-5 bg-[var(--color-ink-200)]" />
+            <span className="inline-block h-0.5 w-5 bg-[#5eead4]" />
             Kauf
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-5 border-t-[1.5px] border-dashed border-[var(--color-ink-200)]" />
+            <span className="inline-block h-0.5 w-5 border-t-[1.5px] border-dashed border-[#f59e0b]" />
             Miete (netto)
           </span>
           <span className="flex items-center gap-1.5">
@@ -378,16 +332,21 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
                 return (
                   <tr
                     key={idx}
-                    className="border-b border-[var(--color-ink-800)]/50 text-[var(--color-ink-200)]"
+                    className={
+                      "border-b border-[var(--color-ink-800)]/50 cursor-pointer transition-colors " +
+                      (idx === clampedIdx
+                        ? "text-[var(--color-ink-50)] bg-[var(--color-ink-800)]/30"
+                        : "text-[var(--color-ink-200)] hover:bg-[var(--color-ink-800)]/20")
+                    }
+                    onClick={() => setAktiverSzenarioIdx(idx)}
                   >
                     <td className="py-2">
                       <span className="inline-flex items-center gap-2">
                         <span
-                          className="inline-block h-2 w-2 rounded-full"
-                          style={{
-                            backgroundColor:
-                              SZENARIO_FARBEN[idx % SZENARIO_FARBEN.length],
-                          }}
+                          className={
+                            "inline-block h-2 w-2 rounded-full border border-[var(--color-ink-500)] " +
+                            (idx === clampedIdx ? "bg-[var(--color-accent)]" : "bg-transparent")
+                          }
                         />
                         {String.fromCharCode(65 + idx)}
                       </span>
@@ -470,9 +429,12 @@ export function MietBenchmarkPanel({ ctrl }: Props) {
         </strong>
         . Ist der Delta positiv, fließt der Überschuss als neue DCA-Tranche
         in den Pot, ist er negativ, wird die Lücke aus dem Pot entnommen.
-        Der Kauf-Wert ist Hauswert (mit Wertsteigerung) minus Restschuld.
-        Der Eigenheim-Verkauf ist bei Eigennutzung steuerfrei; auf den
-        Kursgewinn des Miet-Pots wird Kapitalertragsteuer (
+        Der Kauf-Wert ist Hauswert (mit Wertsteigerung) minus Restschuld
+        plus Käufer-Depot (netto). Nach Tilgungsende fällt die Kreditrate
+        weg – die freigespielte Differenz (Miete − laufende Kosten) wird
+        monatlich im MSCI World angelegt und wächst mit gleicher Rendite.
+        Eigenheim-Verkauf ist bei Eigennutzung steuerfrei; auf den
+        Kursgewinn beider Depots (Mieter + Käufer) wird Kapitalertragsteuer (
         {mb.kapitalertragsteuerProzent.toLocaleString("de-DE")} %) angesetzt
         und separat ausgewiesen.
         <br />
@@ -654,6 +616,22 @@ function AnnahmenEingaben({ mb, setMietBenchmark }: EingabenProps) {
             }))
           }
           hint="25 % Abgeltung + 5,5 % Soli = 26,375 %"
+        />
+        <InputField
+          label="Zeithorizont"
+          type="number"
+          min={1}
+          max={50}
+          step="1"
+          suffix="Jahre"
+          value={mb.horizontJahre || ""}
+          onChange={(e) =>
+            setMietBenchmark((p) => ({
+              ...p,
+              horizontJahre: Number(e.target.value) || 30,
+            }))
+          }
+          hint="Simulation über Tilgungsende hinaus (inkl. Käufer-Depot)"
         />
       </div>
     </Card>

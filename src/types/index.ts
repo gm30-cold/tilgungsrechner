@@ -121,6 +121,7 @@ export interface MietBenchmark {
   wertsteigerungProzent: number; // jährlich auf den Immobilienwert
   instandhaltungProzent: number; // % vom Kaufpreis p.a. als Rücklage/Reparaturen
   kapitalertragsteuerProzent: number; // effektiv 25% + 5,5% Soli = 26,375%
+  horizontJahre: number; // Simulationshorizont in Jahren (z.B. 30)
   /** User-importierte Monatsrenditen aus Börse.de-Paste. Übersteuern die
    *  hardcoded Config in msciWorld.ts. Schlüssel "YYYY-MM", Wert als Dezimalzahl. */
   historischeMonatsReturns: Record<string, number>;

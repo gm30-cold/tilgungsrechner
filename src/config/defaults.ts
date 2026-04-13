@@ -42,8 +42,9 @@ export const LEERE_FINANZIERUNG: Finanzierung = {
     renditeProzent: 6.0,
     renditeVolatilitaetProzent: 15.0,
     wertsteigerungProzent: 2.0,
-    instandhaltungProzent: 0.5,
+    instandhaltungProzent: 1.0,
     kapitalertragsteuerProzent: 26.375,
+    horizontJahre: 30,
     historischeMonatsReturns: {},
   },
 };

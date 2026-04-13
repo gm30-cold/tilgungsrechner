@@ -5,9 +5,15 @@
 // =============================================================================
 //
 // KAUF:
-//   Wealth_Kauf(t) = Hauswert(t) − Restschuld(t)
+//   Wealth_Kauf(t) = Hauswert(t) − Restschuld(t) + KäuferDepot(t)
 //   Hauswert wächst mit `wertsteigerungProzent` p.a.
 //   Restschuld stammt aus dem Tilgungsplan inkl. Sondertilgungen.
+//   Nach Tilgungsende: Rate + Sondertilgung = 0, Restschuld = 0.
+//   Die freigespielte monatliche Rate fließt ab dann in ein
+//   eigenes MSCI-Depot (gleiche Rendite/Vola wie der Mieter-Pot),
+//   abzüglich der weiterhin anfallenden laufenden Kosten + Instandhaltung.
+//   KäuferDepot wird brutto geführt (Eigenheim-Verkauf steuerfrei,
+//   ETF-Gewinn im KäuferDepot wird bei wealthKauf netto ausgewiesen).
 //
 // MIETE (Lump-Sum-DCA in den MSCI World):
 //   Der Mieter hat im Gegenzug zum Käufer exakt die gleiche Liquidität und
@@ -132,13 +138,10 @@ function berechneEinSzenario(
     (kaufpreis * (mb.instandhaltungProzent / 100)) / 12;
 
   // Alle laufenden Kauf-Kosten pro Monat, inklusive Instandhaltungs-Rücklage.
-  // Auf Wunsch NICHT nach "auch für Mieter" getrennt – Realität > Perfektion.
   const kaufLaufendMonat =
     kosten.laufendeKostenMonatlich + instandhaltungMonatlich;
 
   // Einmalige Cashflow-Events auf Monats-Index mappen.
-  // Ausgaben: positiv (Mieter spart sie und investiert).
-  // Einnahmen: negativ (Mieter erhält sie nicht).
   const cashflowEvents = new Map<number, number>();
   const addEvent = (idx: number, betrag: number) => {
     cashflowEvents.set(idx, (cashflowEvents.get(idx) ?? 0) + betrag);
@@ -162,27 +165,29 @@ function berechneEinSzenario(
   // Kumulierte Netto-Einzahlungen (für KapSt-Berechnung).
   let kumulierteEinzahlungen = pot;
 
-  const anzahlMonate = Math.max(plan.monate.length, 1);
+  // Horizont: fester Zeitrahmen (z.B. 30 Jahre), NICHT mehr nur bis Tilgungsende.
+  const anzahlMonate = Math.max(mb.horizontJahre * 12, plan.monate.length, 1);
   const monate: MietBenchmarkMonat[] = [];
   const kapStAnteil = mb.kapitalertragsteuerProzent / 100;
   const sigma = (mb.renditeVolatilitaetProzent || 0) / 100;
   const heuteStr = jetztMonatString();
 
-  // heuteIdx = Monat, der "heute" entspricht (relativ zum Kreditstart).
-  // Alles davor ist Vergangenheit → deterministisch mit historischen Returns,
-  // alles danach ist Zukunft → Annahme-Rendite + Vola-Band.
   const [sy, sm] = startDatum.split("-").map(Number);
   const [hy, hm] = heuteStr.split("-").map(Number);
   const heuteIdx = (hy - sy) * 12 + (hm - sm);
 
+  // Käufer-Depot: Nach Tilgungsende investiert der Käufer die freigespielte
+  // Rate (abzüglich laufender Kosten) monatlich in den MSCI World.
+  let kaeuferDepot = 0;
+  let kaeuferDepotEinzahlungen = 0;
+
   for (let i = 0; i < anzahlMonate; i++) {
-    const planMonat = plan.monate[i];
+    const planMonat = i < plan.monate.length ? plan.monate[i] : undefined;
     const datum = planMonat?.datum ?? addMonths(startDatum, i);
     const jahr = planMonat?.jahr ?? jahrAus(datum);
+    const tilgungLaeuft = planMonat !== undefined;
 
     // 1) SCHRITT A: Pot wird mit dem MSCI-Monatsreturn verzinst.
-    //    Priorität: User-Import > Config-Datei > Annahme-Rendite.
-    //    In der Zukunft fällt alles auf die Annahme-Rendite zurück.
     const istHistorisch = cmpMonat(datum, heuteStr) <= 0;
     const userReturn = mb.historischeMonatsReturns?.[datum];
     const configReturn = istHistorisch
@@ -196,9 +201,12 @@ function berechneEinSzenario(
         : monatRendite;
     pot = pot * (1 + effektiveMonatRendite);
 
-    // 2) SCHRITT B1: Mieter-Spend in diesem Monat – inflationierte Warmmiete.
-    //    Basis ist Kaltmiete + Nebenkosten, beide gemeinsam mit der
-    //    jährlichen Mietpreisinflation skaliert.
+    // Käufer-Depot mitverzinsen (gleiche MSCI-Rendite).
+    if (kaeuferDepot > 0) {
+      kaeuferDepot = kaeuferDepot * (1 + effektiveMonatRendite);
+    }
+
+    // 2) SCHRITT B1: Mieter-Spend – inflationierte Warmmiete.
     const jahreSeitStart = i / 12;
     const mietFaktor = Math.pow(
       1 + mb.mietpreisInflationProzent / 100,
@@ -207,48 +215,51 @@ function berechneEinSzenario(
     const mieterSpend =
       (mb.monatlicheKaltmiete + mb.monatlicheNebenkosten) * mietFaktor;
 
-    // 3) SCHRITT B2: Käufer-Spend in diesem Monat – alles was der Käufer
-    //    im Kauf-Case ausgibt und der Mieter nicht:
-    //      Kreditrate     → stammt aus dem Tilgungsplan (variiert bei
-    //                       Anschlussfinanzierung)
-    //      Sondertilgung  → real + geplant + sens. Pauschale, der
-    //                       Tilgungsplan hat sie bereits als Lump Sum
-    //                       im jeweiligen Monat eingetragen.
-    //      Laufende Kauf-Kosten  → laufende Kosten + Instandhaltungs-Rücklage
-    //    Nach Kredit-Ende fällt die Rate weg, `plan.monate` endet und die
-    //    Schleife läuft nicht weiter – das ist gewollt (Horizont = Kredit).
+    // 3) SCHRITT B2: Käufer-Spend.
+    //    Während Tilgung: Rate + Sondertilgung + laufende Kosten.
+    //    Nach Tilgung: nur noch laufende Kosten (Rate + Sondertilgung = 0).
     const rate = planMonat?.rate ?? 0;
     const sondertilgungBetrag = planMonat?.sondertilgung ?? 0;
     const kaeuferSpend = rate + sondertilgungBetrag + kaufLaufendMonat;
 
-    // 4) SCHRITT C: Cash-Delta – positiv = DCA-Einzahlung in den Pot,
-    //    negativ = Withdraw aus dem Pot zur Finanzierung des Mietlebens.
-    //    Einmalige hausspezifische Events (Küche, Möbelverkauf) kommen als
-    //    zusätzlicher Flow dazu: Ausgaben erhöhen den Delta (+), Einnahmen
-    //    senken ihn (−).
+    // 4) SCHRITT C: Cash-Delta für den Mieter-Pot.
     const einmaligFlow = cashflowEvents.get(i) ?? 0;
     const delta = kaeuferSpend - mieterSpend + einmaligFlow;
-    // DCA bzw. Withdraw: exakt dieser Betrag wird als Lump Sum in diesem
-    // Monat verbucht. Ab Monat i+1 wächst bzw. schrumpft er mit dem Pot.
     pot += delta;
     kumulierteEinzahlungen += delta;
 
-    // 5) Kauf-Seite: Hauswert minus Restschuld.
+    // 5) Nach Tilgungsende: Die freigespielte Rate fließt ins Käufer-Depot.
+    //    "Freigespielte Rate" = was der Käufer während der Tilgung an Rate +
+    //    Sondertilgung gezahlt hat, jetzt aber nicht mehr zahlen muss.
+    //    Übrig bleibt aber die Differenz zur Miete: Der Käufer zahlt weiterhin
+    //    laufende Kosten, der Mieter zahlt Miete. Wenn kaufLaufendMonat < mieterSpend,
+    //    hat der Käufer nach Tilgung sogar einen monatlichen Überschuss.
+    if (!tilgungLaeuft) {
+      // Käufer hat jetzt keinen Kredit mehr. Sein monatlicher Spend = kaufLaufendMonat.
+      // Was er "spart" vs. der Mieter: mieterSpend − kaufLaufendMonat.
+      // Ist das positiv, investiert der Käufer diesen Überschuss.
+      // Ist das negativ, muss der Käufer drauflegen (selten, aber möglich bei
+      // sehr hohen laufenden Kosten vs. sehr niedriger Miete).
+      const kaeuferUeberschuss = mieterSpend - kaufLaufendMonat;
+      if (kaeuferUeberschuss > 0) {
+        kaeuferDepot += kaeuferUeberschuss;
+        kaeuferDepotEinzahlungen += kaeuferUeberschuss;
+      }
+    }
+
+    // 6) Kauf-Seite: Hauswert − Restschuld + Käufer-Depot (netto nach KapSt).
     const hausWert = kaufpreis * Math.pow(1 + monatWertsteig, i + 1);
     const restschuld = planMonat?.restschuld ?? 0;
-    const wealthKauf = hausWert - restschuld;
+    const kaeuferDepotGewinn = Math.max(0, kaeuferDepot - kaeuferDepotEinzahlungen);
+    const kaeuferDepotNetto = kaeuferDepot - kaeuferDepotGewinn * kapStAnteil;
+    const wealthKauf = hausWert - restschuld + kaeuferDepotNetto;
 
-    // 6) Schatten-KapSt: wie hoch wäre das Netto-Vermögen, wenn der Mieter
-    //    in genau diesem Moment alles realisieren würde?
+    // 7) Schatten-KapSt auf Mieter-Pot.
     const kursgewinnAktuell = Math.max(0, pot - kumulierteEinzahlungen);
     const kapStAktuell = kursgewinnAktuell * kapStAnteil;
     const wealthMieteNetto = pot - kapStAktuell;
 
-    // 7) ±1σ-Band auf den Erwartungs-Pot.
-    //    Das Band fächert sich erst ab "heute" auf – in der Vergangenheit
-    //    ist nichts mehr zufällig, die historischen MSCI-Returns haben
-    //    ja schon stattgefunden. Ab der Zukunft gilt bei log-normal
-    //    verteilten Renditen: Erwartung × exp(±σ × √(jahreSeitHeute)).
+    // 8) ±1σ-Band.
     const jahreSeitHeute = Math.max(0, (i - heuteIdx) / 12);
     const bandFaktor =
       sigma > 0 && jahreSeitHeute > 0
