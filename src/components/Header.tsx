@@ -33,15 +33,17 @@ export function Header({ ctrl, tabs }: Props) {
       <div className="mx-auto max-w-[1600px] px-6 pt-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-soft)] text-[var(--color-ink-950)] font-bold">
-              T
-            </div>
+            <img
+              src={import.meta.env.BASE_URL + "logo.jpg"}
+              alt="Amortize"
+              className="h-9 w-9 shrink-0 rounded-lg"
+            />
             <div className="min-w-0">
               <h1 className="text-base font-semibold tracking-tight text-[var(--color-ink-50)]">
-                Tilgungsrechner
+                Amortize
               </h1>
               <p className="text-[11px] text-[var(--color-ink-400)] leading-tight">
-                Immobilien&shy;finanzierung simulieren
+                Mortgage &amp; Investment Simulator
               </p>
             </div>
           </div>

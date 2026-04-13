@@ -59,7 +59,7 @@ export default function App() {
         {activeTab === "miet-benchmark" && <MietBenchmarkPanel ctrl={ctrl} />}
 
         <footer className="mt-12 py-6 text-center text-xs text-[var(--color-ink-500)]">
-          Alle Berechnungen sind Näherungen ohne Rechtsanspruch. Daten bleiben lokal.
+          Amortize · Alle Berechnungen sind Näherungen ohne Rechtsanspruch. Daten bleiben lokal.
         </footer>
       </main>
     </div>

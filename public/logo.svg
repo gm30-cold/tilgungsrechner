@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Haus -->
+  <path d="M32 12L14 28v20h12V36h12v12h12V28L32 12z" stroke="#5eead4" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- Umlaufender Pfeil (oben rechts → unten rechts) -->
+  <path d="M52 18A24 24 0 0 1 52 50" stroke="#5eead4" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M49 47l3 3 3-3" stroke="#5eead4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Umlaufender Pfeil (unten links → oben links) -->
+  <path d="M12 46A24 24 0 0 1 12 14" stroke="#5eead4" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M15 17l-3-3-3 3" stroke="#5eead4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
